@@ -1,0 +1,16 @@
+cat > .gitignore << 'EOF'
+# Compiled files
+*.o
+*.elf
+*.bin
+
+# Temporary files
+*.tmp
+*.swp
+*~
+
+# macOS junk
+.DS_Store
+
+# QEMU logs
+qemu.log
