@@ -1,310 +1,245 @@
 // ============================================
-// YOUR CONVERSATIONAL OS v2.1
-// Fixed: Exit behavior, better persistence explanation
+// CONVERSATIONAL OS v6.0 - FINAL WORKING
+// Proper UART polling with status register
 // ============================================
 
-#define UART_BASE ((volatile unsigned int*)0x09000000)
-#define UART_FR ((volatile unsigned int*)0x09000018)
-#define UART_FR_RXFE (1 << 4)
+#define UART_BASE ((volatile unsigned char*)0x09000000)
+#define UART_FR   ((volatile unsigned int*)0x09000018)
+#define RXFE      (1 << 4)  // Receive FIFO empty bit
 
-#define MAX_NAME_LEN 32
-#define MAX_HISTORY 10
-#define MAX_CMD_LEN 256
-
-// In QEMU, RAM resets on restart. For real persistence later.
-char user_name[MAX_NAME_LEN] = {0};
-char cmd_history[MAX_HISTORY][MAX_CMD_LEN];
-int history_count = 0;
-int history_position = 0;
-unsigned int tick_count = 0;
-
-void uart_print(const char *str) {
-    while (*str) {
-        *UART_BASE = *str++;
+// Print string
+void print(const char *s) {
+    while (*s) {
+        *UART_BASE = *s++;
     }
 }
 
-void uart_readline(char *buffer, int max_len) {
+// Print number
+void print_num(int n) {
+    if (n == 0) {
+        print("0");
+        return;
+    }
+    char buf[12];
+    int i = 0;
+    while (n > 0) {
+        buf[i++] = '0' + (n % 10);
+        n /= 10;
+    }
+    while (i > 0) {
+        i--;
+        *UART_BASE = buf[i];
+    }
+}
+
+// Wait for a character and read it
+char getchar(void) {
+    // Wait until there is data in FIFO (RXFE becomes 0)
+    while (*UART_FR & RXFE) {
+        // Do nothing - wait
+    }
+    return *UART_BASE;
+}
+
+// Read line with echo and backspace
+void readline(char *buf, int max) {
     int i = 0;
     char c;
     
-    while (i < max_len - 1) {
-        while (*UART_FR & UART_FR_RXFE);
-        c = *UART_BASE & 0xFF;
+    while (i < max - 1) {
+        c = getchar();
         
-        if (c == '\r') {
-            buffer[i] = '\0';
-            uart_print("\n");
+        if (c == '\r') {  // Enter
+            buf[i] = '\0';
+            print("\n");
             return;
         }
-        else if (c == '\b' || c == 0x7f) {
+        else if (c == '\b' || c == 0x7f) {  // Backspace
             if (i > 0) {
                 i--;
-                uart_print("\b \b");
+                print("\b \b");
             }
         }
-        else if (c == 0x1b) {
-            while (*UART_FR & UART_FR_RXFE);
-            c = *UART_BASE & 0xFF;
-            while (*UART_FR & UART_FR_RXFE);
-            c = *UART_BASE & 0xFF;
-            
-            if (c == 'A' && history_count > 0) {
-                while (i > 0) {
-                    uart_print("\b \b");
-                    i--;
-                }
-                history_position = (history_position - 1 + history_count) % history_count;
-                char *hist_cmd = cmd_history[history_position];
-                while (*hist_cmd) {
-                    buffer[i++] = *hist_cmd;
-                    *UART_BASE = *hist_cmd++;
-                }
-            }
-        }
-        else if (c >= ' ' && c <= '~') {
-            buffer[i++] = c;
-            *UART_BASE = c;
+        else if (c >= ' ' && c <= '~') {  // Printable
+            buf[i++] = c;
+            *UART_BASE = c;  // Echo
         }
     }
-    buffer[max_len - 1] = '\0';
+    buf[max-1] = '\0';
 }
 
-void to_lower(char *str) {
-    while (*str) {
-        if (*str >= 'A' && *str <= 'Z') {
-            *str = *str + 32;
-        }
-        str++;
-    }
-}
-
-int str_eq(const char *a, const char *b) {
+// String compare
+int equal(const char *a, const char *b) {
     while (*a && *b) {
         if (*a != *b) return 0;
-        a++;
-        b++;
+        a++; b++;
     }
-    return (*a == '\0' && *b == '\0');
+    return *a == *b;
 }
 
-int starts_with(const char *str, const char *prefix) {
-    while (*prefix) {
-        if (*str != *prefix) return 0;
-        str++;
-        prefix++;
-    }
-    return 1;
-}
-
-char* skip_spaces(char *str) {
-    while (*str == ' ') str++;
-    return str;
-}
-
-void add_to_history(const char *cmd) {
-    if (history_count < MAX_HISTORY) {
-        int i;
-        for (i = 0; cmd[i] && i < MAX_CMD_LEN - 1; i++) {
-            cmd_history[history_count][i] = cmd[i];
+// Convert to lowercase
+void to_lower(char *s) {
+    while (*s) {
+        if (*s >= 'A' && *s <= 'Z') {
+            *s = *s + 32;
         }
-        cmd_history[history_count][i] = '\0';
-        history_count++;
+        s++;
+    }
+}
+
+// Trim spaces
+char* trim(char *s) {
+    while (*s == ' ') s++;
+    return s;
+}
+
+// ========== SHADOW AI ==========
+char patterns[20][32];
+int pattern_count[20];
+int total_patterns = 0;
+int total_commands = 0;
+char username[32] = {0};
+char history[10][32];
+int history_count = 0;
+
+void learn_pattern(const char *cmd) {
+    for (int i = 0; i < total_patterns; i++) {
+        if (equal(patterns[i], cmd)) {
+            pattern_count[i]++;
+            return;
+        }
+    }
+    if (total_patterns < 20) {
+        int j;
+        for (j = 0; cmd[j]; j++) patterns[total_patterns][j] = cmd[j];
+        patterns[total_patterns][j] = '\0';
+        pattern_count[total_patterns] = 1;
+        total_patterns++;
+    }
+}
+
+void show_patterns(void) {
+    print("\n===== SHADOW AI PATTERNS =====\n");
+    if (total_patterns == 0) {
+        print("No patterns yet. Keep typing!\n");
     } else {
-        for (int i = 1; i < MAX_HISTORY; i++) {
-            int j;
-            for (j = 0; cmd_history[i][j]; j++) {
-                cmd_history[i-1][j] = cmd_history[i][j];
-            }
-            cmd_history[i-1][j] = '\0';
+        for (int i = 0; i < total_patterns; i++) {
+            print("  ");
+            print(patterns[i]);
+            print(": ");
+            print_num(pattern_count[i]);
+            print(" times\n");
         }
-        int i;
-        for (i = 0; cmd[i] && i < MAX_CMD_LEN - 1; i++) {
-            cmd_history[MAX_HISTORY-1][i] = cmd[i];
-        }
-        cmd_history[MAX_HISTORY-1][i] = '\0';
     }
-    history_position = history_count;
+    print("==============================\n\n");
 }
 
+// ========== COMMAND HANDLER ==========
 void handle_command(char *cmd) {
-    cmd = skip_spaces(cmd);
+    cmd = trim(cmd);
     
     if (cmd[0] == '\0') {
-        uart_print("Type something...\n");
+        print("Type something...\n");
         return;
     }
     
-    add_to_history(cmd);
-    to_lower(cmd);
-    tick_count++;
+    // Learn pattern
+    learn_pattern(cmd);
+    total_commands++;
     
-    if (str_eq(cmd, "hi") || str_eq(cmd, "hello")) {
-        uart_print("Namaste ");
-        if (user_name[0] != '\0') {
-            uart_print(user_name);
-            uart_print("! ");
-        }
-        uart_print("Welcome to your OS!\n");
+    // Save history
+    if (history_count < 10) {
+        int j;
+        for (j = 0; cmd[j]; j++) history[history_count][j] = cmd[j];
+        history[history_count][j] = '\0';
+        history_count++;
     }
-    else if (str_eq(cmd, "help")) {
-        uart_print("\n===== COMMANDS =====\n");
-        uart_print("  hi, hello    - Greeting\n");
-        uart_print("  name         - Show current name\n");
-        uart_print("  set name X   - Set your name\n");
-        uart_print("  time         - Show uptime ticks\n");
-        uart_print("  history      - Show command history\n");
-        uart_print("  clear        - Clear screen\n");
-        uart_print("  exit         - Show exit info\n");
-        uart_print("  help         - This message\n");
-        uart_print("===================\n\n");
-        uart_print("[Shadow AI] Tracking ");
-        int temp = tick_count;
-        char buf[10];
-        int i = 0;
-        if (temp == 0) buf[i++] = '0';
-        else {
-            while (temp > 0) {
-                buf[i++] = '0' + (temp % 10);
-                temp /= 10;
-            }
-        }
-        while (i > 0) {
-            i--;
-            *UART_BASE = buf[i];
-        }
-        uart_print(" commands so far\n\n");
+    
+    // Process command (case insensitive)
+    to_lower(cmd);
+    
+    if (equal(cmd, "hi") || equal(cmd, "hello")) {
+        print("Namaste ");
+        if (username[0]) print(username);
+        print("!\n");
     }
-    else if (str_eq(cmd, "name")) {
-        if (user_name[0] != '\0') {
-            uart_print("Your name is: ");
-            uart_print(user_name);
-            uart_print("\n");
+    else if (equal(cmd, "help")) {
+        print("\n===== COMMANDS =====\n");
+        print("  hi          - Greeting\n");
+        print("  name        - Show name\n");
+        print("  set name X  - Set name\n");
+        print("  patterns    - Show AI patterns\n");
+        print("  history     - Command history\n");
+        print("  stats       - Show stats\n");
+        print("  clear       - Clear screen\n");
+        print("  exit        - Exit\n");
+        print("===================\n\n");
+    }
+    else if (equal(cmd, "name")) {
+        if (username[0]) {
+            print("Name: "); print(username); print("\n");
         } else {
-            uart_print("No name set. Type 'set name YOURNAME'\n");
+            print("No name set. Type 'set name YOURNAME'\n");
         }
     }
-    else if (starts_with(cmd, "set name ")) {
+    else if (cmd[0]=='s' && cmd[1]=='e' && cmd[2]=='t' && cmd[3]==' ' &&
+             cmd[4]=='n' && cmd[5]=='a' && cmd[6]=='m' && cmd[7]=='e' && cmd[8]==' ') {
         char *name = cmd + 9;
-        int i;
-        for (i = 0; name[i] && i < MAX_NAME_LEN - 1; i++) {
-            user_name[i] = name[i];
-        }
-        user_name[i] = '\0';
-        uart_print("Nice to meet you, ");
-        uart_print(user_name);
-        uart_print("! (Name lasts until QEMU restarts)\n");
+        int j;
+        for (j = 0; name[j] && j < 31; j++) username[j] = name[j];
+        username[j] = '\0';
+        print("Hello "); print(username); print("!\n");
     }
-    else if (str_eq(cmd, "time")) {
-        uart_print("Commands executed: ");
-        int temp = tick_count;
-        char buf[10];
-        int i = 0;
-        if (temp == 0) buf[i++] = '0';
-        else {
-            while (temp > 0) {
-                buf[i++] = '0' + (temp % 10);
-                temp /= 10;
-            }
-        }
-        while (i > 0) {
-            i--;
-            *UART_BASE = buf[i];
-        }
-        uart_print("\n");
+    else if (equal(cmd, "patterns")) {
+        show_patterns();
     }
-    else if (str_eq(cmd, "history")) {
-        uart_print("\n===== COMMAND HISTORY =====\n");
+    else if (equal(cmd, "history")) {
+        print("\n===== COMMAND HISTORY =====\n");
         for (int i = 0; i < history_count; i++) {
-            char num[4];
-            int j = 0;
-            int temp = i + 1;
-            while (temp > 0) {
-                num[j++] = '0' + (temp % 10);
-                temp /= 10;
-            }
-            while (j > 0) {
-                j--;
-                *UART_BASE = num[j];
-            }
-            uart_print(": ");
-            uart_print(cmd_history[i]);
-            uart_print("\n");
+            print_num(i+1);
+            print(": ");
+            print(history[i]);
+            print("\n");
         }
-        if (history_count == 0) {
-            uart_print("No commands yet.\n");
-        }
-        uart_print("==========================\n\n");
+        print("===========================\n\n");
     }
-    else if (str_eq(cmd, "clear")) {
-        for (int i = 0; i < 50; i++) uart_print("\n");
+    else if (equal(cmd, "stats")) {
+        print("\n===== STATS =====\n");
+        print("Total commands: "); print_num(total_commands); print("\n");
+        print("Unique patterns: "); print_num(total_patterns); print("\n");
+        print("================\n\n");
     }
-    else if (str_eq(cmd, "exit") || str_eq(cmd, "quit")) {
-        uart_print("\n========================================\n");
-        uart_print("Session Summary:\n");
-        uart_print("  Commands run: ");
-        int temp = tick_count;
-        char buf[10];
-        int i = 0;
-        if (temp == 0) buf[i++] = '0';
-        else {
-            while (temp > 0) {
-                buf[i++] = '0' + (temp % 10);
-                temp /= 10;
-            }
-        }
-        while (i > 0) {
-            i--;
-            *UART_BASE = buf[i];
-        }
-        uart_print("\n");
-        uart_print("  History saved: ");
-        temp = history_count;
-        i = 0;
-        if (temp == 0) buf[i++] = '0';
-        else {
-            while (temp > 0) {
-                buf[i++] = '0' + (temp % 10);
-                temp /= 10;
-            }
-        }
-        while (i > 0) {
-            i--;
-            *UART_BASE = buf[i];
-        }
-        uart_print("\n");
-        uart_print("========================================\n\n");
-        uart_print("To restart OS: Run 'make run' again\n");
-        uart_print("To exit QEMU: Press Ctrl+A then X\n\n");
-        
-        // Don't halt - just wait for QEMU exit
-        while(1) {
-            // Wait for user to press Ctrl+A X
-        }
+    else if (equal(cmd, "clear")) {
+        for (int i = 0; i < 50; i++) print("\n");
+    }
+    else if (equal(cmd, "exit")) {
+        print("\nGoodbye! Learned ");
+        print_num(total_commands);
+        print(" commands.\n");
+        print("Press Ctrl+A then X to exit QEMU\n");
+        while(1);
     }
     else {
-        uart_print("I don't understand '");
-        uart_print(cmd);
-        uart_print("'. Type 'help'\n");
+        print("Unknown: '"); print(cmd); print("'. Type 'help'\n");
     }
 }
 
+// ========== MAIN ==========
 void kernel_main(void) {
-    char input[256];
+    char input[128];
     
-    uart_print("\n\n");
-    uart_print("============================================\n");
-    uart_print("     YOUR CONVERSATIONAL OS v2.1\n");
-    uart_print("     Shadow AI Foundation Active\n");
-    uart_print("============================================\n\n");
-    
-    uart_print("Type 'help' to see commands.\n");
-    uart_print("Try: set name YourName, hi, history, time\n");
-    uart_print("Up Arrow shows previous commands!\n\n");
+    print("\n\n");
+    print("============================================\n");
+    print("     CONVERSATIONAL OS v6.0\n");
+    print("     FINALLY WORKING UART POLLING\n");
+    print("     SHADOW AI ACTIVE\n");
+    print("============================================\n\n");
+    print("Type 'help' to begin.\n");
+    print("Try: hi, set name, patterns, stats\n\n");
     
     while (1) {
-        uart_print(">> ");
-        uart_readline(input, sizeof(input));
+        print(">> ");
+        readline(input, sizeof(input));
         handle_command(input);
     }
 }
