@@ -1,40 +1,13 @@
 // ============================================
-// CONVERSATIONAL OS v8.0 - WITH PREDICTION
-// Based on your working v7.0 + added 'predict' command
+// CONVERSATIONAL OS - FRESH START
+// Simple, clean, working
 // ============================================
 
 #define UART_BASE ((volatile unsigned char*)0x09000000)
 #define UART_FR   ((volatile unsigned int*)0x09000018)
 #define RXFE      (1 << 4)
 
-static inline unsigned long long read_cntpct(void) {
-    unsigned long long val;
-    asm volatile("mrs %0, cntpct_el0" : "=r"(val));
-    return val;
-}
-
-unsigned long long last_ticks = 0;
-unsigned int seconds_since_boot = 0;
-
-#define MAX_PATTERNS 20
-#define MAX_CMDLEN 32
-
-struct pattern {
-    char cmd[MAX_CMDLEN];
-    int total_count;
-    int hour_counts[24];
-};
-
-struct pattern patterns[MAX_PATTERNS];
-int pattern_count = 0;
-
-char username[32] = {0};
-char history[10][MAX_CMDLEN];
-int history_count = 0;
-int total_commands = 0;
-
-// ========== UTILITIES ==========
-
+// ========== UART FUNCTIONS ==========
 void print(const char *s) {
     while (*s) *UART_BASE = *s++;
 }
@@ -54,7 +27,7 @@ void print_num(int n) {
 }
 
 char getchar(void) {
-    while (*UART_FR & RXFE) {}
+    while (*UART_FR & RXFE);
     return *UART_BASE;
 }
 
@@ -80,7 +53,8 @@ void readline(char *buf, int max) {
     buf[max-1] = '\0';
 }
 
-int equal(const char *a, const char *b) {
+// ========== STRING UTILITIES ==========
+int str_eq(const char *a, const char *b) {
     while (*a && *b) {
         if (*a != *b) return 0;
         a++; b++;
@@ -100,112 +74,31 @@ char* trim(char *s) {
     return s;
 }
 
-// ========== TIME MANAGEMENT ==========
+// ========== SHADOW AI (SIMPLE START) ==========
+#define MAX_HISTORY 20
+char history[MAX_HISTORY][32];
+int history_count = 0;
+char last_cmd[32] = {0};
 
-void update_time(void) {
-    unsigned long long now = read_cntpct();
-    if (last_ticks == 0) {
-        last_ticks = now;
-        return;
-    }
-    unsigned long long diff = now - last_ticks;
-    unsigned long long freq = 62500000;
-    unsigned int seconds_passed = diff / freq;
-    if (seconds_passed > 0) {
-        seconds_since_boot += seconds_passed;
-        last_ticks = now;
-    }
-}
-
-unsigned int get_current_hour(void) {
-    return (seconds_since_boot / 3600) % 24;
-}
-
-// ========== SHADOW AI LEARNING ==========
-
-struct pattern* find_or_create_pattern(const char *cmd) {
-    for (int i = 0; i < pattern_count; i++) {
-        if (equal(patterns[i].cmd, cmd)) return &patterns[i];
-    }
-    if (pattern_count < MAX_PATTERNS) {
-        struct pattern *p = &patterns[pattern_count];
+void add_to_history(const char *cmd) {
+    if (history_count < MAX_HISTORY) {
         int j;
-        for (j = 0; cmd[j] && j < MAX_CMDLEN-1; j++) p->cmd[j] = cmd[j];
-        p->cmd[j] = '\0';
-        p->total_count = 0;
-        for (int h = 0; h < 24; h++) p->hour_counts[h] = 0;
-        pattern_count++;
-        return p;
-    }
-    return 0;
-}
-
-void learn_pattern_with_time(const char *cmd, int hour) {
-    struct pattern *p = find_or_create_pattern(cmd);
-    if (p) {
-        p->total_count++;
-        p->hour_counts[hour]++;
+        for (j = 0; cmd[j] && j < 31; j++) history[history_count][j] = cmd[j];
+        history[history_count][j] = '\0';
+        history_count++;
     }
 }
 
-void show_time_patterns(void) {
-    print("\n===== TIME-BASED PATTERNS =====\n");
-    if (pattern_count == 0) {
-        print("No patterns yet.\n");
-    } else {
-        for (int i = 0; i < pattern_count; i++) {
-            print(patterns[i].cmd);
-            print(" (total ");
-            print_num(patterns[i].total_count);
-            print("):\n");
-            for (int h = 0; h < 24; h++) {
-                if (patterns[i].hour_counts[h] > 0) {
-                    print("  ");
-                    print_num(h);
-                    print(":00 - ");
-                    print_num(patterns[i].hour_counts[h]);
-                    print(" times\n");
-                }
-            }
-        }
+void show_history(void) {
+    print("\n===== HISTORY =====\n");
+    for (int i = 0; i < history_count; i++) {
+        print_num(i+1); print(": "); print(history[i]); print("\n");
     }
-    print("===============================\n\n");
-}
-
-// ========== PREDICTION (NEW) ==========
-
-void predict_command(unsigned int hour) {
-    int best_idx = -1;
-    int best_freq = 0;
-    int total_at_hour = 0;
-
-    for (int i = 0; i < pattern_count; i++) {
-        total_at_hour += patterns[i].hour_counts[hour];
-    }
-
-    if (total_at_hour == 0) {
-        print("[Shadow AI] Not enough data for this hour yet.\n");
-        return;
-    }
-
-    for (int i = 0; i < pattern_count; i++) {
-        if (patterns[i].hour_counts[hour] > best_freq) {
-            best_freq = patterns[i].hour_counts[hour];
-            best_idx = i;
-        }
-    }
-
-    if (best_idx != -1) {
-        int confidence = (best_freq * 100) / total_at_hour;
-        print("[Shadow AI] I predict you'll type '");
-        print(patterns[best_idx].cmd);
-        print("' (");
-        print_num(confidence);
-        print("% confidence)\n");
-    }
+    print("==================\n\n");
 }
 
 // ========== COMMAND HANDLER ==========
+char username[32] = {0};
 
 void handle_command(char *cmd) {
     cmd = trim(cmd);
@@ -213,91 +106,50 @@ void handle_command(char *cmd) {
         print("Type something...\n");
         return;
     }
-
-    update_time();
-    unsigned int current_hour = get_current_hour();
-
-    learn_pattern_with_time(cmd, current_hour);
-    total_commands++;
-
-    if (history_count < 10) {
-        int j;
-        for (j = 0; cmd[j] && j < MAX_CMDLEN-1; j++) history[history_count][j] = cmd[j];
-        history[history_count][j] = '\0';
-        history_count++;
-    }
-
+    
+    add_to_history(cmd);
+    
+    // Save for next time
+    int j;
+    for (j = 0; cmd[j] && j < 31; j++) last_cmd[j] = cmd[j];
+    last_cmd[j] = '\0';
+    
     to_lower(cmd);
-
-    if (equal(cmd, "hi") || equal(cmd, "hello")) {
+    
+    if (str_eq(cmd, "hi") || str_eq(cmd, "hello")) {
         print("Namaste ");
         if (username[0]) print(username);
-        print("! (hour ");
-        print_num(current_hour);
-        print(")\n");
+        print("!\n");
     }
-    else if (equal(cmd, "help")) {
+    else if (str_eq(cmd, "help")) {
         print("\n===== COMMANDS =====\n");
         print("  hi           - Greeting\n");
         print("  name         - Show name\n");
         print("  set name X   - Set name\n");
-        print("  patterns     - Simple counts\n");
-        print("  timepatterns - Hourly patterns\n");
-        print("  predict      - Shadow AI predicts next command\n");
-        print("  time         - Uptime seconds\n");
-        print("  history      - Command history\n");
-        print("  stats        - Stats\n");
+        print("  history      - Show command history\n");
         print("  clear        - Clear screen\n");
         print("  exit         - Exit\n");
         print("===================\n\n");
     }
-    else if (equal(cmd, "name")) {
+    else if (str_eq(cmd, "name")) {
         if (username[0]) { print("Name: "); print(username); print("\n"); }
         else print("No name set. Type 'set name YOURNAME'\n");
     }
     else if (cmd[0]=='s' && cmd[1]=='e' && cmd[2]=='t' && cmd[3]==' ' &&
              cmd[4]=='n' && cmd[5]=='a' && cmd[6]=='m' && cmd[7]=='e' && cmd[8]==' ') {
         char *name = cmd + 9;
-        int j;
         for (j = 0; name[j] && j < 31; j++) username[j] = name[j];
         username[j] = '\0';
         print("Hello "); print(username); print("!\n");
     }
-    else if (equal(cmd, "patterns")) {
-        print("\n===== SIMPLE PATTERNS =====\n");
-        for (int i = 0; i < pattern_count; i++) {
-            print(patterns[i].cmd); print(": "); print_num(patterns[i].total_count); print(" times\n");
-        }
-        print("===========================\n\n");
+    else if (str_eq(cmd, "history")) {
+        show_history();
     }
-    else if (equal(cmd, "timepatterns")) {
-        show_time_patterns();
+    else if (str_eq(cmd, "clear")) {
+        for (int i = 0; i < 30; i++) print("\n");
     }
-    else if (equal(cmd, "predict")) {
-        predict_command(current_hour);
-    }
-    else if (equal(cmd, "time")) {
-        print("Uptime: "); print_num(seconds_since_boot); print(" seconds\n");
-    }
-    else if (equal(cmd, "history")) {
-        print("\n===== HISTORY =====\n");
-        for (int i = 0; i < history_count; i++) { print_num(i+1); print(": "); print(history[i]); print("\n"); }
-        print("==================\n\n");
-    }
-    else if (equal(cmd, "stats")) {
-        print("\n===== STATS =====\n");
-        print("Total commands: "); print_num(total_commands); print("\n");
-        print("Patterns stored: "); print_num(pattern_count); print("\n");
-        print("Uptime: "); print_num(seconds_since_boot); print(" sec\n");
-        print("================\n\n");
-    }
-    else if (equal(cmd, "clear")) {
-        for (int i = 0; i < 50; i++) print("\n");
-    }
-    else if (equal(cmd, "exit")) {
-        print("\nGoodbye! Shadow AI learned ");
-        print_num(total_commands);
-        print(" commands.\nPress Ctrl+A then X to exit QEMU\n");
+    else if (str_eq(cmd, "exit")) {
+        print("Goodbye!\n");
         while(1);
     }
     else {
@@ -306,21 +158,16 @@ void handle_command(char *cmd) {
 }
 
 // ========== MAIN ==========
-
 void kernel_main(void) {
     char input[128];
-
-    seconds_since_boot = 0;
-    last_ticks = 0;
-
+    
     print("\n\n");
-    print("==================================================\n");
-    print("     CONVERSATIONAL OS v8.0\n");
-    print("     NEW: 'predict' command - Shadow AI guesses\n");
-    print("==================================================\n\n");
-    print("Type 'help' for commands.\n");
-    print("Try: set name, hi, timepatterns, predict\n\n");
-
+    print("========================================\n");
+    print("     CONVERSATIONAL OS - FRESH START\n");
+    print("     Simple. Clean. Working.\n");
+    print("========================================\n\n");
+    print("Type 'help' to begin.\n\n");
+    
     while (1) {
         print(">> ");
         readline(input, sizeof(input));
