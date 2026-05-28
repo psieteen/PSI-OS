@@ -21,7 +21,7 @@ void timer_update(void) {
         return;
     }
     unsigned long long diff = now - last_ticks;
-    unsigned long long freq = 62500000;  // QEMU frequency
+    unsigned long long freq = 62500000;
     unsigned int seconds_passed = diff / freq;
     if (seconds_passed > 0) {
         seconds_since_boot += seconds_passed;

@@ -15,7 +15,9 @@ static char last_cmd[32] = {0};
 static void add_to_history(const char *cmd) {
     if (history_count < MAX_HISTORY) {
         int j;
-        for (j = 0; cmd[j] && j < MAX_CMDLEN-1; j++) history[history_count][j] = cmd[j];
+        for (j = 0; cmd[j] && j < MAX_CMDLEN-1; j++) {
+            history[history_count][j] = cmd[j];
+        }
         history[history_count][j] = '\0';
         history_count++;
     }
@@ -39,36 +41,41 @@ static void process_command(char *cmd) {
         return;
     }
     
-    // Update time and learn pattern
     timer_update();
     unsigned int hour = timer_get_hour();
+    
+    if (last_cmd[0] != '\0') {
+        learn_sequence(last_cmd, cmd);
+    }
+    
     learn_time_pattern(cmd, hour);
     increment_total_commands();
-    
-    // Add to history
     add_to_history(cmd);
     
-    // Save for next time
     int j;
-    for (j = 0; cmd[j] && j < 31; j++) last_cmd[j] = cmd[j];
+    for (j = 0; cmd[j] && j < 31; j++) {
+        last_cmd[j] = cmd[j];
+    }
     last_cmd[j] = '\0';
     
     to_lower(cmd);
     
     if (str_eq(cmd, "hi") || str_eq(cmd, "hello")) {
         uart_print("Namaste ");
-        if (username[0]) uart_print(username);
-        uart_print("! (hour ");
-        uart_print_num(hour);
-        uart_print(")\n");
+        if (username[0]) {
+            uart_print(username);
+        }
+        uart_print("!\n");
     }
     else if (str_eq(cmd, "help")) {
         uart_print("\n===== COMMANDS =====\n");
-        uart_print("  hi           - Greeting with time\n");
+        uart_print("  hi           - Greeting\n");
         uart_print("  name         - Show name\n");
         uart_print("  set name X   - Set name\n");
         uart_print("  time         - Show uptime\n");
-        uart_print("  timepatterns - Show hourly patterns\n");
+        uart_print("  timepatterns - Hourly patterns\n");
+        uart_print("  sequences    - Show command sequences\n");
+        uart_print("  predict      - Predict next command\n");
         uart_print("  history      - Command history\n");
         uart_print("  stats        - Show stats\n");
         uart_print("  clear        - Clear screen\n");
@@ -87,7 +94,9 @@ static void process_command(char *cmd) {
     else if (cmd[0]=='s' && cmd[1]=='e' && cmd[2]=='t' && cmd[3]==' ' &&
              cmd[4]=='n' && cmd[5]=='a' && cmd[6]=='m' && cmd[7]=='e' && cmd[8]==' ') {
         char *name = cmd + 9;
-        for (j = 0; name[j] && j < 31; j++) username[j] = name[j];
+        for (j = 0; name[j] && j < 31; j++) {
+            username[j] = name[j];
+        }
         username[j] = '\0';
         uart_print("Hello ");
         uart_print(username);
@@ -97,11 +106,17 @@ static void process_command(char *cmd) {
         uart_print("Uptime: ");
         uart_print_num(timer_get_seconds());
         uart_print(" seconds (hour ");
-        uart_print_num(hour);
+        uart_print_num(timer_get_hour());
         uart_print(")\n");
     }
     else if (str_eq(cmd, "timepatterns")) {
         show_time_patterns();
+    }
+    else if (str_eq(cmd, "sequences")) {
+        show_sequences();
+    }
+    else if (str_eq(cmd, "predict")) {
+        predict_next(last_cmd);
     }
     else if (str_eq(cmd, "history")) {
         show_history();
@@ -111,7 +126,7 @@ static void process_command(char *cmd) {
         uart_print("Total commands: ");
         uart_print_num(get_total_commands());
         uart_print("\n");
-        uart_print("Unique patterns: ");
+        uart_print("Time patterns: ");
         uart_print_num(get_pattern_count());
         uart_print("\n");
         uart_print("Uptime: ");
@@ -120,12 +135,12 @@ static void process_command(char *cmd) {
         uart_print("================\n\n");
     }
     else if (str_eq(cmd, "clear")) {
-        for (int i = 0; i < 30; i++) uart_print("\n");
+        for (int i = 0; i < 30; i++) {
+            uart_print("\n");
+        }
     }
     else if (str_eq(cmd, "exit")) {
-        uart_print("\nGoodbye! Shadow AI learned ");
-        uart_print_num(get_total_commands());
-        uart_print(" commands.\n");
+        uart_print("\nGoodbye!\n");
         while(1);
     }
     else {
@@ -140,12 +155,11 @@ void shell_run(void) {
     
     uart_print("\n\n");
     uart_print("============================================\n");
-    uart_print("     CONVERSATIONAL OS v2.0\n");
-    uart_print("     Shadow AI - Time Pattern Learning\n");
-    uart_print("     MODULAR ARCHITECTURE\n");
+    uart_print("     CONVERSATIONAL OS v3.0\n");
+    uart_print("     Shadow AI - Sequence Learning\n");
     uart_print("============================================\n\n");
     uart_print("Type 'help' for commands.\n");
-    uart_print("Try: hi, set name, timepatterns, stats\n\n");
+    uart_print("Try: hi -> patterns -> hi -> patterns -> sequences\n\n");
     
     while (1) {
         uart_print(">> ");
