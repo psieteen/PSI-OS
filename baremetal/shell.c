@@ -148,6 +148,11 @@ static void process_command(char *cmd) {
         uart_print(cmd);
         uart_print("'. Type 'help'\n");
     }
+    
+    // Silent hint - automatically suggest next command
+    if (!str_eq(cmd, "predict")) {
+        silent_hint(last_cmd);
+    }
 }
 
 void shell_run(void) {
@@ -155,11 +160,11 @@ void shell_run(void) {
     
     uart_print("\n\n");
     uart_print("============================================\n");
-    uart_print("     CONVERSATIONAL OS v3.0\n");
-    uart_print("     Shadow AI - Sequence Learning\n");
+    uart_print("     CONVERSATIONAL OS v4.0\n");
+    uart_print("     Shadow AI - Silent Hints\n");
     uart_print("============================================\n\n");
     uart_print("Type 'help' for commands.\n");
-    uart_print("Try: hi -> patterns -> hi -> patterns -> sequences\n\n");
+    uart_print("Shadow AI will automatically suggest next commands!\n\n");
     
     while (1) {
         uart_print(">> ");

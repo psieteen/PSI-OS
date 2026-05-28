@@ -7,6 +7,7 @@ void show_time_patterns(void);
 void learn_sequence(const char *from, const char *to);
 void show_sequences(void);
 void predict_next(const char *last_cmd);
+void silent_hint(const char *last_cmd);  // NEW
 int get_pattern_count(void);
 int get_total_commands(void);
 void increment_total_commands(void);

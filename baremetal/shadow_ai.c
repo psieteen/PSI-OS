@@ -165,6 +165,36 @@ void predict_next(const char *last_cmd) {
     }
 }
 
+void silent_hint(const char *last_cmd) {
+    if (last_cmd[0] == '\0') {
+        return;
+    }
+    
+    int best_idx = -1;
+    int best_count = 0;
+    
+    for (int i = 0; i < sequence_count; i++) {
+        if (str_eq(sequences[i].from, last_cmd)) {
+            if (sequences[i].count > best_count) {
+                best_count = sequences[i].count;
+                best_idx = i;
+            }
+        }
+    }
+    
+    if (best_idx != -1 && best_count >= 1) {
+        int confidence = (best_count * 100) / (total_commands + 5);
+        if (confidence > 95) confidence = 95;
+        if (confidence < 30) confidence = 30;
+        
+        uart_print("[Shadow AI] Try '");
+        uart_print(sequences[best_idx].to);
+        uart_print("' next (");
+        uart_print_num(confidence);
+        uart_print("%)\n");
+    }
+}
+
 int get_pattern_count(void) {
     return pattern_count;
 }
