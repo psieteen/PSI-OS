@@ -3,16 +3,19 @@ LD = aarch64-elf-ld
 CFLAGS = -ffreestanding -nostdlib -nostartfiles -mstrict-align -Wall -Wextra
 LDFLAGS = -T linker.ld -nostdlib
 
+CSRCS = uart.c utils.c timer.c shadow_ai.c shell.c kernel_main.c
+OBJS = boot.o $(CSRCS:.c=.o)
+
 all: kernel.elf
 
 boot.o: boot.s
 	$(CC) $(CFLAGS) -c boot.s -o boot.o
 
-kernel.o: kernel.c
-	$(CC) $(CFLAGS) -c kernel.c -o kernel.o
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
-kernel.elf: boot.o kernel.o
-	$(LD) $(LDFLAGS) boot.o kernel.o -o kernel.elf
+kernel.elf: $(OBJS)
+	$(LD) $(LDFLAGS) $(OBJS) -o kernel.elf
 
 clean:
 	rm -f *.o *.elf
