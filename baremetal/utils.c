@@ -19,3 +19,11 @@ char* trim(char *s) {
     while (*s == ' ') s++;
     return s;
 }
+
+int starts_with(const char *str, const char *prefix) {
+    while (*prefix) {
+        if (*str != *prefix) return 0;
+        str++; prefix++;
+    }
+    return 1;
+}

@@ -3,7 +3,7 @@ LD = aarch64-elf-ld
 CFLAGS = -ffreestanding -nostdlib -nostartfiles -mstrict-align -Wall -Wextra
 LDFLAGS = -T linker.ld -nostdlib
 
-CSRCS = uart.c utils.c timer.c shadow_ai.c shell.c kernel_main.c
+CSRCS = uart.c utils.c timer.c storage.c shadow_ai.c shell.c kernel_main.c
 OBJS = boot.o $(CSRCS:.c=.o)
 
 all: kernel.elf
@@ -21,6 +21,6 @@ clean:
 	rm -f *.o *.elf
 
 run: kernel.elf
-	qemu-system-aarch64 -M virt -cpu cortex-a72 -nographic -kernel kernel.elf
+	qemu-system-aarch64 -M virt -cpu cortex-a72 -nographic -kernel kernel.elf -rtc base=localtime
 
 .PHONY: all clean run

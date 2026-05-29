@@ -4,12 +4,6 @@
 #define UART_FR   ((volatile unsigned int*)0x09000018)
 #define RXFE      (1 << 4)
 
-static int initialized = 0;
-
-void uart_init(void) {
-    initialized = 1;
-}
-
 void uart_print(const char *s) {
     while (*s) *UART_BASE = *s++;
 }
@@ -26,6 +20,10 @@ void uart_print_num(int n) {
         i--;
         *UART_BASE = buf[i];
     }
+}
+
+void uart_print_char(char c) {
+    *UART_BASE = c;
 }
 
 char uart_getchar(void) {
@@ -49,7 +47,7 @@ void uart_readline(char *buf, int max) {
             }
         } else if (c >= ' ' && c <= '~') {
             buf[i++] = c;
-            *UART_BASE = c;
+            uart_print_char(c);
         }
     }
     buf[max-1] = '\0';
