@@ -22,12 +22,8 @@ void uart_print_num(int n) {
     }
 }
 
-void uart_print_char(char c) {
-    *UART_BASE = c;
-}
-
 char uart_getchar(void) {
-    while (*UART_FR & RXFE);
+    while (*UART_FR & RXFE) {}
     return *UART_BASE;
 }
 
@@ -47,7 +43,7 @@ void uart_readline(char *buf, int max) {
             }
         } else if (c >= ' ' && c <= '~') {
             buf[i++] = c;
-            uart_print_char(c);
+            *UART_BASE = c;
         }
     }
     buf[max-1] = '\0';

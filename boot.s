@@ -1,14 +1,17 @@
-.global _main
+.global _start
+.section .text
+
+_start:
+    ldr x0, =_stack_top
+    mov sp, x0
+    bl kernel_main
+
+hang:
+    wfe
+    b hang
+
+.section .bss
 .align 4
-_main:
-mov x0, #1
-adrp x1, msg@PAGE
-add x1, x1, msg@PAGEOFF
-mov x2, #13
-mov x16, #4
-svc #0x80
-mov x0, #0
-mov x16, #1
-svc #0x80
-msg:
-.ascii "hellow world\n"
+_stack_bottom:
+    .space 16384
+_stack_top:

@@ -142,3 +142,10 @@ void shadow_ai_save_all(void) {
 void shadow_ai_load_all(void) {
     uart_print("[Shadow AI] Loading...\n");
 }
+void shadow_ai_load_saved_data(void) {
+    uart_print("[Shadow AI] Loading saved patterns...\n");
+    
+    // Patterns will be loaded when user types commands
+    // For now, just log
+    uart_print("[Shadow AI] Ready to learn from saved data\n");
+}
